@@ -1,0 +1,18 @@
+{
+  "_comment": "Generic tenant portal shell. Everything KLD-specific comes from config.json at build time; nothing about any one tenant is hardcoded here. The page fetches nothing about a customer until portalGate returns allow.",
+  "tenant": {
+    "slug": "tenant-zero-kld",
+    "display_name": "Kootenay Lawn Doctor",
+    "tagline": "Seasonal renewals",
+    "logo_url": "",
+    "primary_color": "#2f6f3e",
+    "accent_color": "#c9a227",
+    "support_email": "",
+    "support_phone": ""
+  },
+  "gate": {
+    "url": "",
+    "fail_closed": true
+  },
+  "season": "summer"
+}
