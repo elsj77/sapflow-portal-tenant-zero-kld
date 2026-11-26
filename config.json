@@ -15,7 +15,8 @@
     "fail_closed": true,
     "tenant": "kootenay-lawn-doctor-inc",
     "accept_url": "https://sincere-sap-flow-pro.base44.app/functions/portalAccept",
-    "pay_url": "https://sincere-sap-flow-pro.base44.app/functions/portalPayment"
+    "pay_url": "https://sincere-sap-flow-pro.base44.app/functions/portalPayment",
+    "addon_url": "https://sincere-sap-flow-pro.base44.app/functions/portalAddon"
   },
   "season": "winter",
   "portal": {
