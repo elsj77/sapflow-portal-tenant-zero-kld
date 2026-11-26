@@ -340,7 +340,7 @@
       fetch(g.pay_url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant_slug: g.tenant, action: "ask", portal_assertion: d.payment_assertion })
+        body: JSON.stringify({ tenant_slug: g.tenant, action: "ask", payment_assertion: d.payment_assertion })
       }).then(function (r) { return r.json(); }).then(function (b) {
         card.known = true;
         card.provider = b.provider || null;
@@ -474,7 +474,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tenant_slug: g2.tenant, action: "charge", portal_assertion: d.payment_assertion,
+          tenant_slug: g2.tenant, action: "charge", payment_assertion: d.payment_assertion,
           amount: String(Number(d.total).toFixed(2)), currency: "CAD",
           reference: "renewal-" + (d.estimate_number || "")
         })
