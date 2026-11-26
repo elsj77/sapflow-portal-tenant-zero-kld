@@ -6,7 +6,7 @@
 <title>Renewal Portal</title>
 <meta name="robots" content="noindex, nofollow">
 <style>
-  :root { --brand: #2f6f3e; --accent: #c9a227; --ink: #1c1f1d; --muted: #6b7280; --line: #e5e7eb; }
+  :root { --brand: #1f2937; --accent: #0ea5e9; --ink: #1c1f1d; --muted: #6b7280; --line: #e5e7eb; }
   * { box-sizing: border-box; }
   body { margin: 0; font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
          color: var(--ink); background: #fafaf8; -webkit-font-smoothing: antialiased; }
@@ -30,6 +30,21 @@
          padding: 11px 18px; border-radius: 10px; font-weight: 600; font-size: 15px; }
   .contact { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
   .contact a { color: var(--brand); }
+  .who { font-size: 15px; color: var(--muted); margin: -2px 0 18px; }
+  .who strong { color: var(--ink); font-weight: 600; }
+  table.lines { width: 100%; border-collapse: collapse; margin: 4px 0 0; font-size: 15px; }
+  table.lines th { text-align: left; font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+                   color: var(--muted); font-weight: 600; padding: 0 0 8px; border-bottom: 1px solid var(--line); }
+  table.lines th.num, table.lines td.num { text-align: right; white-space: nowrap; }
+  table.lines td { padding: 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.lines tr:last-child td { border-bottom: 0; }
+  table.lines .svc { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .totals { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 15px; }
+  .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
+  .totals .grand { font-weight: 700; font-size: 18px; padding-top: 8px; }
+  .totals .lbl { color: var(--muted); }
+  .notice { margin-top: 18px; padding: 12px 14px; background: #fff7ed; border: 1px solid #fed7aa;
+            border-radius: 10px; font-size: 14px; color: #9a3412; }
 </style>
 </head>
 <body>
@@ -77,8 +92,8 @@
   }
 
   function applyBrand(t) {
-    document.documentElement.style.setProperty("--brand", t.primary_color || "#2f6f3e");
-    document.documentElement.style.setProperty("--accent", t.accent_color || "#c9a227");
+    document.documentElement.style.setProperty("--brand", t.primary_color || "#1f2937");
+    document.documentElement.style.setProperty("--accent", t.accent_color || "#0ea5e9");
     if (t.display_name) document.title = t.display_name + " — Renewal";
     var n = document.getElementById("tenant-name");
     var tag = document.getElementById("tenant-tag");
@@ -133,6 +148,63 @@
     });
   }
 
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function money(n) {
+    return (n === null || n === undefined || isNaN(Number(n))) ? "" : "$" + Number(n).toFixed(2);
+  }
+
+  // Everything rendered here came from the gate, and the gate only returns it
+  // after its access decision allowed this quote. Line labels are SAP's own
+  // customer-visible EstimateNote text, never an internal note.
+  function renderQuote(d) {
+    show("state-ready");
+    var sub = document.getElementById("ready-sub");
+    var body = document.getElementById("ready-body");
+    var title = document.getElementById("ready-title");
+    if (title) title.textContent = d.estimate_number ? "Estimate #" + d.estimate_number : "Your renewal";
+
+    var who = [];
+    if (d.client_name) who.push("<strong>" + esc(d.client_name) + "</strong>");
+    if (d.service_address) who.push(esc(d.service_address));
+    if (sub) sub.innerHTML = who.length ? who.join(" &middot; ") : "";
+
+    var html = "";
+    var lines = (d.lines || []);
+    if (lines.length) {
+      html += '<table class="lines"><thead><tr><th>Service</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Total</th></tr></thead><tbody>';
+      lines.forEach(function (l) {
+        var rateCell = money(l.rate);
+        if (l.visits && Number(l.visits) > 1) rateCell += " &times; " + esc(l.visits);
+        html += "<tr><td>" + esc(l.label || "Service") +
+                (l.package ? '<span class="svc">Package</span>' : "") +
+                "</td><td class=\"num\">" + (l.qty == null ? "" : esc(l.qty)) +
+                "</td><td class=\"num\">" + rateCell +
+                "</td><td class=\"num\">" + money(l.total) + "</td></tr>";
+      });
+      html += "</tbody></table>";
+
+      var totals = '<div class="totals">';
+      if (d.subtotal != null) totals += '<div><span class="lbl">Subtotal</span><span>' + money(d.subtotal) + "</span></div>";
+      if (d.tax != null) totals += '<div><span class="lbl">GST</span><span>' + money(d.tax) + "</span></div>";
+      if (d.total != null) totals += '<div class="grand"><span>Total</span><span>' + money(d.total) + "</span></div>";
+      totals += "</div>";
+      html += totals;
+    } else if (d.lines_error) {
+      html += '<div class="notice">We could not load the line items for this estimate. Please contact us and we will send it to you directly.</div>';
+    } else {
+      html += '<div class="notice">This estimate has no line items on file yet. Please contact us to review it.</div>';
+    }
+
+    var t = (cfg && cfg.tenant) || {};
+    var contact = contactLine(t);
+    if (contact) html += '<div class="contact">' + contact + "</div>";
+    if (body) body.innerHTML = html;
+  }
+
   function start() {
     // SAP's native quote link arrives as ?q=<quote code> (or the full
     // viewmyproposal URL). Both shapes carry the estimate, so both are accepted.
@@ -143,15 +215,13 @@
     }
     callGate(quote).then(function (decision) {
       if (!decision.allowed) {
-        closePortal(decision.client_message, decision.mode === "read_only" ? "A balance is outstanding" : "This portal is closed");
+        // portalGate returns customer_message (client_message kept for older gate builds).
+        closePortal(decision.customer_message || decision.client_message,
+                    decision.mode === "read_only" ? "A balance is outstanding" : "This portal is closed");
         return;
       }
       // Only past this point may customer data be requested.
-      show("state-ready");
-      var sub = document.getElementById("ready-sub");
-      if (sub) sub.textContent = "Loading your services…";
-      var body = document.getElementById("ready-body");
-      if (body) body.innerHTML = '<p class="muted">Your renewal details load here once the services feed is connected.</p>';
+      renderQuote(decision);
     });
   }
 
