@@ -117,7 +117,7 @@
       headers: { "Content-Type": "application/json" },
       // The gate needs to know WHICH tenant's SAP to resolve the quote against.
       // The slug is baked into config.json at build time, never guessed by the gate.
-      body: JSON.stringify({ quote: quote, page: "renew", tenant: (cfg && cfg.tenant && cfg.tenant.slug) || "" }),
+      body: JSON.stringify({ quote: quote, page: "renew", tenant: (cfg && cfg.gate && cfg.gate.tenant) || (cfg && cfg.tenant && cfg.tenant.slug) || "" }),
       signal: ctrl.signal
     }).then(function (r) {
       clearTimeout(timer);
