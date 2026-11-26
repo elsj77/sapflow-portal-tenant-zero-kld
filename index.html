@@ -571,6 +571,7 @@
             '<div class="muted" id="payresult">Estimate #' + esc(b.estimate_number || "") + " · " +
             esc((b.plan || chosen)) + ". Recording how you chose to pay…</div></div>";
           settlePayment();
+          bookRenewal();
           return;
         }
         btn.disabled = false;
@@ -585,6 +586,45 @@
         btn.textContent = "Accept this renewal";
       });
     });
+
+    // Accepting flips the estimate's stage; booking is what actually schedules the
+    // season. It is a separate call so a booking failure can never make the customer
+    // believe they renewed when nothing was scheduled - and any step that needs the
+    // office is reported here, in the page, not silently swallowed.
+    function bookRenewal() {
+      var out = document.getElementById("payresult");
+      var g3 = (cfg && cfg.gate) || {};
+      if (!g3.book_url) {
+        if (out) out.textContent += " Our office will confirm your season booking.";
+        return;
+      }
+      if (out) out.textContent += " Booking your season…";
+      fetch(g3.book_url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ portal_assertion: d.payment_assertion })
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        var b = j || {};
+        if (b.ok) {
+          if (out) out.textContent = "Your renewal is accepted and your season is booked.";
+          return;
+        }
+        var pending = [];
+        (b.steps || []).forEach(function (s) {
+          if (s && s.ok === false) pending.push(String(s.step || ""));
+        });
+        if (out) out.textContent = "Your renewal is accepted.";
+        var n = document.createElement("div");
+        n.className = "notice";
+        n.textContent = "Your renewal is recorded. " +
+          (pending.length
+            ? "One setup step still needs our office to finish it (" + pending.join(", ") + "), so your services may not be scheduled yet. We will confirm within one business day."
+            : "We will confirm the scheduling within one business day.");
+        if (out && out.parentNode) out.parentNode.appendChild(n);
+      }).catch(function () {
+        if (out) out.textContent = "Your renewal is accepted. Our office will confirm the scheduling.";
+      });
+    }
 
     // Pay in full is the only plan that moves money here, and only when the tenant's
     // own processor says it can. Anything else is reported plainly, never implied.
