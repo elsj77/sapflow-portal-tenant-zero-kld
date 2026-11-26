@@ -4,15 +4,15 @@
     "slug": "tenant-zero-kld",
     "display_name": "Kootenay Lawn Doctor",
     "tagline": "Seasonal renewals",
-    "logo_url": "",
+    "logo_url": "https://1af81a386f.sdkmedia.net/pub/6brz/0z6c92vb/k6c/g1i/qse/combinedcompanylogo_200x200.png",
     "primary_color": "#2f6f3e",
     "accent_color": "#c9a227",
-    "support_email": "",
+    "support_email": "info@kootenaylawndoctor.com",
     "support_phone": ""
   },
   "gate": {
-    "url": "",
+    "url": "https://sincere-sap-flow-pro.base44.app/functions/portalGate",
     "fail_closed": true
   },
-  "season": "summer"
+  "season": "winter"
 }
