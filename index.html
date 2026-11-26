@@ -38,7 +38,8 @@
   table.lines th.num, table.lines td.num { text-align: right; white-space: nowrap; }
   table.lines td { padding: 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
   table.lines tr:last-child td { border-bottom: 0; }
-  table.lines .svc { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  table.lines .svc { display: block; color: var(--muted); font-size: 13px; margin-top: 3px;
+                     white-space: pre-line; line-height: 1.45; }
   .totals { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 15px; }
   .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
   .totals .grand { font-weight: 700; font-size: 18px; padding-top: 8px; }
@@ -180,6 +181,7 @@
         var rateCell = money(l.rate);
         if (l.visits && Number(l.visits) > 1) rateCell += " &times; " + esc(l.visits);
         html += "<tr><td>" + esc(l.label || "Service") +
+                (l.detail ? '<span class="svc">' + esc(l.detail) + "</span>" : "") +
                 (l.package ? '<span class="svc">Package</span>' : "") +
                 "</td><td class=\"num\">" + (l.qty == null ? "" : esc(l.qty)) +
                 "</td><td class=\"num\">" + rateCell +
