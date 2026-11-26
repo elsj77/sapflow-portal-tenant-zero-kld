@@ -104,7 +104,8 @@
   }
 
   // The gate decides. Nothing about the customer is fetched before it answers.
-  function callGate(token) {
+  // Identity is SAP's own quote code from the emailed link (?q=), not a minted token.
+  function callGate(quote) {
     var g = (cfg && cfg.gate) || {};
     if (!g.url) return Promise.resolve({ allowed: false, reason: "gate_not_configured" });
 
@@ -114,7 +115,9 @@
     return fetch(g.url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: token, page: "renew" }),
+      // The gate needs to know WHICH tenant's SAP to resolve the quote against.
+      // The slug is baked into config.json at build time, never guessed by the gate.
+      body: JSON.stringify({ quote: quote, page: "renew", tenant: (cfg && cfg.tenant && cfg.tenant.slug) || "" }),
       signal: ctrl.signal
     }).then(function (r) {
       clearTimeout(timer);
@@ -131,12 +134,14 @@
   }
 
   function start() {
-    var token = new URLSearchParams(location.search).get("t") || "";
-    if (!token) {
+    // SAP's native quote link arrives as ?q=<quote code> (or the full
+    // viewmyproposal URL). Both shapes carry the estimate, so both are accepted.
+    var quote = new URLSearchParams(location.search).get("q") || "";
+    if (!quote) {
       closePortal("This link is missing its renewal code. Use the link from your email, or contact us and we will resend it.", "Link incomplete");
       return;
     }
-    callGate(token).then(function (decision) {
+    callGate(quote).then(function (decision) {
       if (!decision.allowed) {
         closePortal(decision.client_message, decision.mode === "read_only" ? "A balance is outstanding" : "This portal is closed");
         return;
