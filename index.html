@@ -62,6 +62,17 @@
                font: inherit; font-weight: 650; font-size: 16px; padding: 14px 18px; cursor: pointer; }
   .acceptbtn[disabled] { opacity: .5; cursor: not-allowed; }
   .acceptbar .fine { margin-top: 10px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+  .sched { margin-top: 14px; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+  .sched .row { display: flex; justify-content: space-between; padding: 9px 13px; font-size: 13.5px; }
+  .sched .row + .row { border-top: 1px solid var(--line); }
+  .sched .row span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .cardline { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px;
+    font-size: 13.5px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .cardline .brand { font-weight: 650; }
+  .cardline a { color: var(--brand); font-weight: 600; }
+  .terms { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; font-size: 13.5px; line-height: 1.5; }
+  .terms input { margin-top: 3px; flex: 0 0 auto; }
+  .terms a { color: var(--brand); }
   .done { margin-top: 20px; padding: 16px 18px; background: #ecfdf5; border: 1px solid #a7f3d0;
           border-radius: 12px; }
   .done .t { font-weight: 650; margin-bottom: 4px; }
@@ -231,6 +242,26 @@
     wirePlans(d);
   }
 
+  // Installment dates. The first payment month is tenant config; default is the
+  // first of next month so a schedule never reads as already overdue.
+  function firstInstallmentDate() {
+    var pc = (cfg && cfg.portal) || {};
+    var now = new Date();
+    var y = Number(pc.installments_start_year) || now.getFullYear();
+    var m = Number(pc.installments_start_month) || (now.getMonth() + 2);
+    if (!Number(pc.installments_start_month)) {
+      if (m > 12) { m = m - 12; y = y + 1; }
+    }
+    return { y: y, m: m };
+  }
+  function addMonths(base, k) {
+    var y = base.y, m = base.m + k;
+    while (m > 12) { m -= 12; y += 1; }
+    var names = ["January","February","March","April","May","June","July",
+                 "August","September","October","November","December"];
+    return { y: y, m: m, label: "1 " + names[m - 1] + " " + y };
+  }
+
   // How the customer pays, mirroring the plans the office offers: pay in full now,
   // equal monthly payments when SAP has the estimate laid out in installments, or pay
   // as you go. Amounts come from the estimate itself, never from a template constant.
@@ -259,21 +290,103 @@
     });
     h += "</div>";
 
+    // The real installment schedule, dated. A count alone tells a customer nothing
+    // about when money leaves their account.
+    if (inst > 1 && total >= minInst) {
+      var first = firstInstallmentDate();
+      var per = total / inst;
+      h += '<div class="sched" id="sched" hidden>';
+      for (var k = 0; k < inst; k++) {
+        h += '<div class="row"><span>' + esc(addMonths(first, k).label) + '</span><span>' +
+             esc(money(per)) + "</span></div>";
+      }
+      h += "</div>";
+    }
+
+    h += '<div class="cardline" id="cardline">Checking for a card on file…</div>';
+
+    var terms = (cfg && cfg.terms) || {};
+    var needTerms = terms.url || terms.required;
+    if (needTerms) {
+      h += '<label class="terms"><input type="checkbox" id="termscb"><span>I accept the ' +
+           (terms.url ? '<a href="' + esc(terms.url) + '" target="_blank" rel="noopener">terms and conditions</a>'
+                      : 'terms and conditions') +
+           (terms.version ? " (version " + esc(terms.version) + ")" : "") + ".</span></label>";
+    }
+
     h += '<div class="acceptbar">';
     h += '<button type="button" class="acceptbtn" id="acceptbtn"' + (allowAccept ? "" : " disabled") +
          ">" + (allowAccept ? "Accept this renewal" : "Acceptance paused") + "</button>";
     if (!allowAccept && d.customer_message) {
       h += '<div class="notice">' + esc(d.customer_message) + "</div>";
     }
-    h += '<div class="fine">Accepting tells us to book this season at the prices shown. ' +
-         'Nothing is charged on this page yet' +
-         (d.plan_note ? " " + esc(d.plan_note) : "") + ".</div>";
+    h += '<div class="fine" id="payfine">Accepting tells us to book this season at the prices shown.' +
+         (d.plan_note ? " " + esc(d.plan_note) : "") + "</div>";
     h += "</div>";
     return h;
   }
 
   function wirePlans(d) {
     var chosen = "prepay";
+    var card = { known: false, on_file: null, can_charge: false, add_url: null, reason: null, provider: null };
+
+    // Ask the tenant's own processor whether this customer already has a card. The
+    // answer is scoped to this quote by the gate assertion, so it cannot be used to
+    // probe anyone else.
+    function loadCard() {
+      var g = (cfg && cfg.gate) || {};
+      var line = document.getElementById("cardline");
+      if (!g.pay_url) { if (line) line.textContent = ""; return; }
+      fetch(g.pay_url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant_slug: g.tenant, action: "ask", portal_assertion: d.payment_assertion })
+      }).then(function (r) { return r.json(); }).then(function (b) {
+        card.known = true;
+        card.provider = b.provider || null;
+        card.on_file = b.card_on_file || null;
+        card.can_charge = !!b.can_charge_now;
+        card.add_url = b.add_card_url || null;
+        card.reason = (b.can_charge && b.can_charge.reason) || b.reason || null;
+        renderCard();
+      }).catch(function () {
+        card.known = true;
+        renderCard();
+      });
+    }
+
+    function renderCard() {
+      var line = document.getElementById("cardline");
+      if (!line) return;
+      if (card.on_file && card.on_file.last4) {
+        var br = card.on_file.brand ? String(card.on_file.brand) : "Card";
+        var ex = card.on_file.exp ? " · expires " + esc(card.on_file.exp) : "";
+        line.innerHTML = '<span class="brand">' + esc(br) + " ending " + esc(card.on_file.last4) + "</span>" +
+          '<span class="muted">' + ex + "</span>";
+        return;
+      }
+      if (card.add_url) {
+        line.innerHTML = '<span class="muted">No card on file.</span>' +
+          '<a href="' + esc(card.add_url) + '" target="_blank" rel="noopener">Add a card securely</a>';
+        return;
+      }
+      line.innerHTML = '<span class="muted">No card on file. This company invoices renewals, ' +
+        'so nothing is charged here.</span>';
+    }
+
+    // Show the dated schedule only while the customer is looking at that plan.
+    function syncSchedule() {
+      var el = document.getElementById("sched");
+      if (el) el.hidden = chosen !== "installments";
+      var fine = document.getElementById("payfine");
+      if (fine) {
+        fine.textContent = chosen === "prepay"
+          ? "Accepting books this season at the prices shown. Payment is taken by the office, not on this page."
+          : chosen === "installments"
+            ? "Accepting books this season and sets up the dated payments shown above."
+            : "Accepting books this season. You are invoiced as the work is completed.";
+      }
+    }
     var cards = document.querySelectorAll(".plan");
     Array.prototype.forEach.call(cards, function (el) {
       el.addEventListener("click", function () {
@@ -281,8 +394,22 @@
         Array.prototype.forEach.call(cards, function (o) {
           o.setAttribute("aria-checked", o === el ? "true" : "false");
         });
+        syncSchedule();
       });
     });
+    loadCard();
+    syncSchedule();
+
+    // Terms gate: the button stays shut until the customer has actually accepted them.
+    var tcb = document.getElementById("termscb");
+    if (tcb) {
+      var syncTerms = function () {
+        var b0 = document.getElementById("acceptbtn");
+        if (b0) b0.disabled = d.allow_accept === false || !tcb.checked;
+      };
+      tcb.addEventListener("change", syncTerms);
+      syncTerms();
+    }
     var btn = document.getElementById("acceptbtn");
     if (!btn) return;
     btn.addEventListener("click", function () {
@@ -290,10 +417,16 @@
       if (!g.accept_url) { return; }
       btn.disabled = true;
       btn.textContent = "Accepting…";
+      var terms = (cfg && cfg.terms) || {};
       fetch(g.accept_url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ portal_assertion: d.payment_assertion, plan: chosen })
+        body: JSON.stringify({
+          portal_assertion: d.payment_assertion,
+          plan: chosen,
+          terms_accepted: true,
+          terms_version: terms.version || null
+        })
       }).then(function (r) {
         return r.json().then(function (j) { return { status: r.status, body: j }; });
       }).then(function (res) {
@@ -301,8 +434,9 @@
         if (b.ok && b.accepted) {
           var bar = btn.parentNode;
           bar.innerHTML = '<div class="done"><div class="t">Thank you — your renewal is accepted.</div>' +
-            '<div class="muted">Estimate #' + esc(b.estimate_number || "") + " · " +
-            esc((b.plan || chosen)) + ". We have it on file and will be in touch about payment.</div></div>";
+            '<div class="muted" id="payresult">Estimate #' + esc(b.estimate_number || "") + " · " +
+            esc((b.plan || chosen)) + ". Recording how you chose to pay…</div></div>";
+          settlePayment();
           return;
         }
         btn.disabled = false;
@@ -317,6 +451,46 @@
         btn.textContent = "Accept this renewal";
       });
     });
+
+    // Pay in full is the only plan that moves money here, and only when the tenant's
+    // own processor says it can. Anything else is reported plainly, never implied.
+    function settlePayment() {
+      var out = document.getElementById("payresult");
+      if (!out) return;
+      if (chosen !== "prepay") {
+        out.textContent = chosen === "installments"
+          ? "We have your schedule on file and will contact you before the first payment."
+          : "You are invoiced as the work is completed. Nothing was charged.";
+        return;
+      }
+      var g2 = (cfg && cfg.gate) || {};
+      if (!card.can_charge || !g2.pay_url) {
+        out.textContent = "Nothing was charged. " + (card.on_file && card.on_file.last4
+          ? "We have your card ending " + card.on_file.last4 + " on file and the office will process payment."
+          : "This company invoices renewals, so payment is arranged directly with the office.");
+        return;
+      }
+      fetch(g2.pay_url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant_slug: g2.tenant, action: "charge", portal_assertion: d.payment_assertion,
+          amount: String(Number(d.total).toFixed(2)), currency: "CAD",
+          reference: "renewal-" + (d.estimate_number || "")
+        })
+      }).then(function (r) { return r.json(); }).then(function (c) {
+        if (c && c.money_moved) {
+          out.textContent = "Payment received: " + money(Number(d.total)) +
+            (c.confirmation ? " · confirmation " + c.confirmation : "") + ".";
+        } else {
+          out.textContent = "Nothing was charged. " +
+            ((c && (c.detail || c.reason)) || "Payment could not be taken just now") +
+            ". The office will follow up.";
+        }
+      }).catch(function () {
+        out.textContent = "Nothing was charged. The office will follow up about payment.";
+      });
+    }
   }
 
   function start() {
