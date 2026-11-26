@@ -69,6 +69,31 @@
   .cardline { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px;
     font-size: 13.5px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .cardline .brand { font-weight: 650; }
+  .addons { margin-top: 22px; }
+  .addons h2 { font-size: 15px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .addons .sub { color: var(--muted); font-size: 13.5px; margin: 0 0 10px; }
+  .addon { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left; cursor: pointer;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 8px;
+    font: inherit; color: inherit; transition: border-color .15s, box-shadow .15s; }
+  .addon:hover { border-color: #cbd5e1; }
+  .addon[aria-checked="true"] { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(31,41,55,.06); }
+  .addon[disabled] { opacity: .55; cursor: not-allowed; }
+  .addon .box { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 2px; border-radius: 5px;
+    border: 1.5px solid #cbd5e1; background: #fff; }
+  .addon[aria-checked="true"] .box { border-color: var(--brand); background: var(--brand); }
+  .addon .at { font-weight: 600; }
+  .addon .ad { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+  .addon .ap { margin-left: auto; font-weight: 650; white-space: nowrap; padding-left: 10px; }
+  .addon .why { color: #92400e; font-size: 12.5px; margin-top: 4px; }
+  .change { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .change h2 { font-size: 15px; margin: 0 0 4px; }
+  .change .sub { color: var(--muted); font-size: 13.5px; margin: 0 0 10px; }
+  .change textarea { width: 100%; min-height: 84px; border: 1px solid var(--line); border-radius: 11px;
+    padding: 12px; font: inherit; resize: vertical; }
+  .change button { margin-top: 10px; border: 1px solid var(--brand); background: #fff; color: var(--brand);
+    border-radius: 11px; padding: 11px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+  .change button[disabled] { opacity: .5; cursor: not-allowed; }
+
   .cardline a { color: var(--brand); font-weight: 600; }
   .terms { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; font-size: 13.5px; line-height: 1.5; }
   .terms input { margin-top: 3px; flex: 0 0 auto; }
@@ -240,6 +265,7 @@
     if (contact) html += '<div class="contact">' + contact + "</div>";
     if (body) body.innerHTML = html;
     wirePlans(d);
+    wireAddons(d);
   }
 
   // Installment dates. The first payment month is tenant config; default is the
@@ -305,6 +331,19 @@
 
     h += '<div class="cardline" id="cardline">Checking for a card on file…</div>';
 
+    // Optional services. Rendered only when the tenant publishes a catalogue, and every
+    // item carries the tenant's own price. A line that SAP will not accept is shown
+    // disabled WITH the reason, never silently hidden and never claimed as added.
+    h += '<div class="addons" id="addons" hidden><h2>Add to your renewal</h2>' +
+         '<p class="sub">Optional services you can add to this season. Prices are per season.</p>' +
+         '<div id="addonlist"></div></div>';
+
+    h += '<div class="change"><h2>Need something different?</h2>' +
+         '<p class="sub">Ask for a change instead of accepting and we will follow up before booking anything.</p>' +
+         '<textarea id="changemsg" placeholder="Tell us what you would like changed…"></textarea>' +
+         '<button type="button" id="changebtn">Send change request</button>' +
+         '<div class="notice" id="changenote" hidden></div></div>';
+
     var terms = (cfg && cfg.terms) || {};
     var needTerms = terms.url || terms.required;
     if (needTerms) {
@@ -324,6 +363,101 @@
          (d.plan_note ? " " + esc(d.plan_note) : "") + "</div>";
     h += "</div>";
     return h;
+  }
+
+  // Optional services + change request. Both talk to the tenant's own add-on endpoint with the
+  // same gate approval the rest of the page uses, and both re-read SAP rather than trusting a
+  // 200: an add-on that is not on the estimate was not added.
+  function wireAddons(d) {
+    var a = cfg && cfg.gate && cfg.gate.addon_url;
+    var box = document.getElementById("addons");
+    var list = document.getElementById("addonlist");
+    if (!a || !list || !box) return;
+    var canEdit = d.allow_accept !== false;
+    var selected = {};
+
+    function callAddon(payload) {
+      return fetch(a, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.assign({
+          portal_assertion: d.payment_assertion,
+          estimate_id: d.estimate_id || d.quote_id || ""
+        }, payload))
+      }).then(function (r) { return r.json(); });
+    }
+
+    function render() {
+      list.innerHTML = "";
+      callAddon({ action: "catalogue" }).then(function (res) {
+        var items = (res && res.addons) || [];
+        if (!items.length) { box.hidden = true; return; }
+        box.hidden = false;
+        items.forEach(function (it) {
+          var b = document.createElement("button");
+          b.type = "button";
+          b.className = "addon";
+          b.setAttribute("role", "checkbox");
+          b.setAttribute("aria-checked", "false");
+          var why = it.available === false ? (it.reason || "Not available on this estimate") : "";
+          b.innerHTML = '<span class="box"></span><span><span class="at">' + esc(it.label || it.id) +
+            '</span>' + (it.description ? '<span class="ad">' + esc(it.description) + '</span>' : "") +
+            (why ? '<span class="why">' + esc(why) + "</span>" : "") + "</span>" +
+            '<span class="ap">' + (it.rate != null ? esc(money(Number(it.rate))) : "") + "</span>";
+          if (!canEdit || it.available === false) b.disabled = true;
+          b.addEventListener("click", function () {
+            if (b.disabled) return;
+            var on = b.getAttribute("aria-checked") === "true";
+            b.disabled = true;
+            callAddon({ action: on ? "remove" : "add", addon_id: it.id }).then(function (r) {
+              b.disabled = false;
+              if (!r || r.ok !== true) {
+                why = (r && (r.reason || r.detail)) || "We could not change that just now.";
+                var w = b.querySelector(".why");
+                if (!w) { w = document.createElement("span"); w.className = "why"; b.firstChild.appendChild(w); }
+                w.textContent = why;
+                return;
+              }
+              b.setAttribute("aria-checked", on ? "false" : "true");
+              selected[it.id] = !on;
+              var fine = document.getElementById("payfine");
+              if (fine && r.subtotal_after != null) {
+                fine.setAttribute("data-addons", String(r.subtotal_after));
+              }
+            });
+          });
+          list.appendChild(b);
+        });
+      }).catch(function () { box.hidden = true; });
+    }
+
+    var btn = document.getElementById("changebtn");
+    var msg = document.getElementById("changemsg");
+    var note = document.getElementById("changenote");
+    if (btn && msg && note) {
+      btn.addEventListener("click", function () {
+        var text = (msg.value || "").trim();
+        if (text.length < 5) {
+          note.hidden = false; note.textContent = "Please describe the change you would like.";
+          return;
+        }
+        btn.disabled = true;
+        callAddon({ action: "change_request", message: text }).then(function (r) {
+          btn.disabled = false;
+          note.hidden = false;
+          if (r && r.ok === true) {
+            msg.value = "";
+            note.textContent = "Thank you. Your request is with the office and nothing has been booked yet.";
+          } else {
+            note.textContent = (r && (r.reason || r.detail)) || "We could not send that just now.";
+          }
+        }).catch(function () {
+          btn.disabled = false; note.hidden = false;
+          note.textContent = "We could not send that just now. Please try again or call the office.";
+        });
+      });
+    }
+    render();
   }
 
   function wirePlans(d) {
