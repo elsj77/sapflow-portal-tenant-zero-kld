@@ -14,10 +14,16 @@
     "url": "https://sincere-sap-flow-pro.base44.app/functions/portalGate",
     "fail_closed": true,
     "tenant": "kootenay-lawn-doctor-inc",
-    "accept_url": "https://sincere-sap-flow-pro.base44.app/functions/portalAccept"
+    "accept_url": "https://sincere-sap-flow-pro.base44.app/functions/portalAccept",
+    "pay_url": "https://sincere-sap-flow-pro.base44.app/functions/portalPayment"
   },
   "season": "winter",
   "portal": {
     "installments_min_total": 0
+  },
+  "terms": {
+    "url": "https://terms.kootenaylawndoctor.com/terms/residential-snow-terms-and-conditions-2026-27.pdf",
+    "version": "2026-27",
+    "required": true
   }
 }
