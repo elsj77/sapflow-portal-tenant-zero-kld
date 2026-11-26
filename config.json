@@ -13,7 +13,11 @@
   "gate": {
     "url": "https://sincere-sap-flow-pro.base44.app/functions/portalGate",
     "fail_closed": true,
-    "tenant": "kootenay-lawn-doctor-inc"
+    "tenant": "kootenay-lawn-doctor-inc",
+    "accept_url": "https://sincere-sap-flow-pro.base44.app/functions/portalAccept"
   },
-  "season": "winter"
+  "season": "winter",
+  "portal": {
+    "installments_min_total": 0
+  }
 }
