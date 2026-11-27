@@ -28,6 +28,9 @@
   .closed h1 { color: #9a3412; }
   .btn { display: inline-block; background: var(--brand); color: #fff; text-decoration: none;
          padding: 11px 18px; border-radius: 10px; font-weight: 600; font-size: 15px; }
+  .retry { margin-top: 16px; border: 0; border-radius: 10px; background: var(--brand); color: #fff;
+           padding: 11px 18px; font: inherit; font-weight: 600; font-size: 15px; cursor: pointer; }
+  .retry[hidden] { display: none; }
   .contact { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
   .contact a { color: var(--brand); }
   .who { font-size: 15px; color: var(--muted); margin: -2px 0 18px; }
@@ -132,6 +135,7 @@
     <div class="closed">
       <h1 id="closed-title">This portal is unavailable</h1>
       <p id="closed-message"></p>
+      <button type="button" id="closed-retry" class="retry" hidden>Try again</button>
       <div class="contact" id="closed-contact"></div>
     </div>
   </div>
@@ -176,12 +180,33 @@
     return parts.length ? "Questions? " + parts.join(" &middot; ") : "";
   }
 
-  function closePortal(message, title) {
+  function closePortal(message, title, allowRetry) {
     var t = (cfg && cfg.tenant) || {};
     document.getElementById("closed-title").textContent = title || "This portal is unavailable";
     document.getElementById("closed-message").textContent = message || "Please contact us to continue.";
     document.getElementById("closed-contact").innerHTML = contactLine(t);
+    var btn = document.getElementById("closed-retry");
+    if (btn) {
+      btn.hidden = !allowRetry;
+      btn.onclick = allowRetry ? function () { btn.hidden = true; show("state-checking"); start(); } : null;
+    }
     show("state-closed");
+  }
+
+  // A technical failure must never be dressed up as a business decision. If the gate
+  // could not be reached or answered garbage, the honest story is "we could not load
+  // this right now", not "your portal is closed" — a paying customer who reads
+  // "closed" during a network blip concludes they have been cut off and stops trying.
+  // Only the gate's own denial reasons are allowed to read as a decision.
+  var TECHNICAL_REASONS = {
+    gate_unreachable: "We could not reach our system just now.",
+    gate_bad_response: "Our system gave an unexpected answer.",
+    gate_error: "Our system could not load this renewal just now.",
+    gate_timeout: "Our system took too long to answer."
+  };
+
+  function isTechnical(reason) {
+    return Object.prototype.hasOwnProperty.call(TECHNICAL_REASONS, String(reason || ""));
   }
 
   // The gate decides. Nothing about the customer is fetched before it answers.
@@ -718,6 +743,14 @@
     }
     callGate(quote).then(function (decision) {
       if (!decision.allowed) {
+        if (isTechnical(decision.reason)) {
+          // Retryable. Say what actually happened, keep the customer's link working,
+          // and leave the office number in reach.
+          closePortal(TECHNICAL_REASONS[decision.reason] +
+                      " Nothing has changed about your renewal. Please try again in a moment.",
+                      "We could not load your renewal", true);
+          return;
+        }
         // portalGate returns customer_message (client_message kept for older gate builds).
         closePortal(decision.customer_message || decision.client_message,
                     decision.mode === "read_only" ? "A balance is outstanding" : "This portal is closed");
