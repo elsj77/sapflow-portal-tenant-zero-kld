@@ -278,6 +278,15 @@
       });
       html += "</tbody></table>";
 
+      // If the displayed lines cannot be made to add up to SAP's subtotal, say so. A
+      // silent mismatch is worse than a sentence: the customer sees numbers that do not
+      // reconcile and stops trusting the whole page.
+      if (d.lines_reconcile === false) {
+        html += '<div class="notice">Some items on this estimate are included in the total ' +
+                'without a separate line here. The subtotal, tax and total below are the ' +
+                'figures from our system and are the ones that apply.</div>';
+      }
+
       var totals = '<div class="totals">';
       if (d.subtotal != null) totals += '<div><span class="lbl">Subtotal</span><span>' + money(d.subtotal) + "</span></div>";
       if (d.tax != null) totals += '<div><span class="lbl">GST</span><span>' + money(d.tax) + "</span></div>";
