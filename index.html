@@ -40,6 +40,14 @@
   table.lines tr:last-child td { border-bottom: 0; }
   table.lines .svc { display: block; color: var(--muted); font-size: 13px; margin-top: 3px;
                      white-space: pre-line; line-height: 1.45; }
+  /* A package is priced as a unit, so its parent row carries no rate or total of its
+     own; the rounds SAP puts under it carry the money. Never a $0.00 here. */
+  table.lines tr.pkg td { padding-bottom: 6px; }
+  table.lines .pkgnote { font-style: italic; }
+  table.lines tr.kid td { padding: 5px 0 5px 18px; border-bottom: 0; color: var(--ink); font-size: 14px; }
+  table.lines tr.kid td:first-child { border-left: 2px solid var(--line); padding-left: 12px; }
+  table.lines tr.kidlast td { border-bottom: 1px solid var(--line); padding-bottom: 11px; }
+  table.lines .dash { color: var(--muted); }
   .totals { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 15px; }
   .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
   .totals .grand { font-weight: 700; font-size: 18px; padding-top: 8px; }
@@ -235,11 +243,35 @@
     if (lines.length) {
       html += '<table class="lines"><thead><tr><th>Service</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Total</th></tr></thead><tbody>';
       lines.forEach(function (l) {
+        // SAP prices a package as a unit: the parent line carries Rate 0 / Total 0 and
+        // its rounds carry the money. Printing that zero would tell the customer a real
+        // service costs nothing, so a package parent shows the package name, a dash in
+        // the money columns and its rounds underneath. The subtotal/GST/total block
+        // below stays the authoritative figure.
+        var kids = (l.children && l.children.length) ? l.children : [];
+        if (l.priced_as_package === true) {
+          var note = l.amount_note || "Priced as a package \u2014 total shown below";
+          html += "<tr class=\"pkg\"><td>" + esc(l.label || "Package") +
+                  (l.detail ? '<span class="svc">' + esc(l.detail) + "</span>" : "") +
+                  '<span class="svc pkgnote">' + esc(note) + "</span>" +
+                  "</td><td class=\"num\">" + (l.qty == null ? "" : esc(l.qty)) +
+                  '</td><td class="num dash">&mdash;</td><td class="num dash">&mdash;</td></tr>';
+          kids.forEach(function (c, i) {
+            var cr = money(c.rate);
+            if (c.visits && Number(c.visits) > 1) cr += " &times; " + esc(c.visits);
+            var last = (i === kids.length - 1) ? " kidlast" : "";
+            html += '<tr class="kid' + last + '"><td>' + esc(c.label || "Service") +
+                    (c.detail ? '<span class="svc">' + esc(c.detail) + "</span>" : "") +
+                    "</td><td class=\"num\">" + (c.qty == null ? "" : esc(c.qty)) +
+                    "</td><td class=\"num\">" + cr +
+                    "</td><td class=\"num\">" + money(c.total) + "</td></tr>";
+          });
+          return;
+        }
         var rateCell = money(l.rate);
         if (l.visits && Number(l.visits) > 1) rateCell += " &times; " + esc(l.visits);
         html += "<tr><td>" + esc(l.label || "Service") +
                 (l.detail ? '<span class="svc">' + esc(l.detail) + "</span>" : "") +
-                (l.package ? '<span class="svc">Package</span>' : "") +
                 "</td><td class=\"num\">" + (l.qty == null ? "" : esc(l.qty)) +
                 "</td><td class=\"num\">" + rateCell +
                 "</td><td class=\"num\">" + money(l.total) + "</td></tr>";
